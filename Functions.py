@@ -243,7 +243,11 @@ def clustering_function(km_df, number_of_clusters=3, init = "random", n_init=20)
 # In[8]:
 
 
-def train_svc(svm_df):
+def train_and_export_svc(svm_df, output_filename="/svm_for_cow.pkl"):
+    # This function has no return value
+    # PLEASE LET ME KNOW IF THIS FUNCTION SHOULD RETURN TRAINED MODEL
+    # INSTEAD OF EXPORTING MODEL TO A FILEPATH
+    
     # importing the libraries
     import pandas as pd
     import numpy as np
@@ -275,7 +279,9 @@ def train_svc(svm_df):
     
     # save the svm model
     path = os.getcwd()
-    joblib.dump(model, path + "/svm_for_cow.pkl")
+    joblib.dump(model, path + output_filename)
+    
+    
     
 
 
