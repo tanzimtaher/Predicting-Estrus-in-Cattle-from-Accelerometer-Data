@@ -9,9 +9,81 @@
 import pandas as pd
 
 
-# # Remove duplicates
+# # Preprocess Data
 
 # In[3]:
+
+
+def pre_process_data(data):
+    # Make the necessary imports
+    import datetime
+    import pandas as pd
+    import numpy as np
+    from statistics import mean
+    
+    # Only select the data column for parsing
+    data = data['data']
+    
+    
+    x_data = []
+    y_data = []
+    z_data = []
+    time_frame = []
+    device_data = []
+    battery_level = []
+    device_battery = {}
+    
+    for item in data:
+        decoded_item = item[2:-5]
+        item_value = decoded_item.split(',')
+        #print(item_value)
+        
+        # Take the device ID information
+        device_id = item_value[0]
+        
+        # The time information is in index 3 of the item_value list
+        time_ar = item_value[3]
+        times = datetime.datetime.strptime(time_ar, "%Y-%m-%dT%H:%M:%SZ")
+        
+        # Need to find out why we are adding timedelta of 6 hours. Is it because Dhaka is GMT+6?
+        # --> They sent date as UTC, so we've converted it into BST
+        time_val = times + datetime.timedelta(hours=6) # why the timedelta? --> using timedelta we can get the time we want and also we can convert the time into GMT+6 but using timedelta we directly converted it into our time format. 
+        
+        # Take the battery information from index position 2 of the item_value list
+        # and convert it from 2-bit to 16-bit integer.
+        # --> axis data and battery information was sent as 16-bit integer, now we converted it into decimal
+        battery = np.int16(int(item_value[2], 16))
+        
+        # Take the x, y, z information from index position 1 of the item_value list 
+        # and convert it from 2-bit to 16-bit integer
+        # x values between string index 0:4 for item_value[1]
+        x = (np.int16(int(item_value[1][0:4], 16)))/256 
+        # y values between string index 4:8 for item_value[1]
+        y = (np.int16(int(item_value[1][4:8], 16)))/256 
+        # x values between string index 8:12 for item_value[1]
+        z = (np.int16(int(item_value[1][8:], 16)))/256 
+        
+        # Append the battery, x, y, z, time and device information to the previously initialized lists
+        battery_level.append(battery)
+        x_data.append(x)
+        y_data.append(y)
+        z_data.append(z)
+        time_frame.append(time_val)
+        device_data.append(device_id)
+        
+    
+    # Return all the lists together in a dataframe
+    #return x_data, y_data, z_data, time_frame, device_data
+    # Create new dataframe df using the new list variables
+    df = pd.DataFrame(list(zip(device_data, time_frame, x_data, y_data, z_data)), 
+                   columns =['device_id', 'time', 'x', 'y', 'z']) 
+    
+    return df
+
+
+# # Remove duplicates
+
+# In[4]:
 
 
 def remove_duplicates(dataframe, duplicate_row_to_keep = "first", column_to_subset_by="time"):
@@ -42,7 +114,7 @@ def remove_duplicates(dataframe, duplicate_row_to_keep = "first", column_to_subs
 
 # # Smoothing noise
 
-# In[4]:
+# In[5]:
 
 
 def smooth_noise(dataframe, window_size=5):
@@ -52,16 +124,19 @@ def smooth_noise(dataframe, window_size=5):
     # make necessary imports 
     import pandas as pd
     
-    dataframe['x'] = animal1['x'].rolling(window=window_size).mean()
-    dataframe['y'] = animal1['y'].rolling(window=window_size).mean()
-    dataframe['z'] = animal1['z'].rolling(window=window_size).mean()
+    dataframe['x'] = dataframe['x'].rolling(window=window_size).mean()
+    dataframe['y'] = dataframe['y'].rolling(window=window_size).mean()
+    dataframe['z'] = dataframe['z'].rolling(window=window_size).mean()
+    
+    # drop rows with null values for the smoothened data
+    dataframe = dataframe.dropna(axis=0)
     
     return dataframe
 
 
 # # Calculating the x_diff, y_diff, z_diff and sum_diff
 
-# In[5]:
+# In[6]:
 
 
 def calculate_differential_values(dataframe):
@@ -70,10 +145,10 @@ def calculate_differential_values(dataframe):
     # calculates the sum of the (absolute) differential values
     
     # make necessary imports
-    import padas as pd
+    import pandas as pd
     
     # rename columns    
-    dataframe.rename(columns={"x":"x_diff", "y": "y_diff", "z": "z_diff"})
+    dataframe = dataframe.rename(columns={"x":"x_diff", "y": "y_diff", "z": "z_diff"})
     
     # turn time to index
     dataframe = dataframe.set_index('time')
@@ -93,7 +168,7 @@ def calculate_differential_values(dataframe):
 
 # # K-means
 
-# In[6]:
+# In[7]:
 
 
 def clustering_function(km_df, number_of_clusters=3, init = "random", n_init=20):
@@ -103,8 +178,20 @@ def clustering_function(km_df, number_of_clusters=3, init = "random", n_init=20)
     from sklearn.cluster import KMeans
     from sklearn.preprocessing import StandardScaler
     
-    # drop the time column 
-    km_df = km_df.drop(columns = ['time']) 
+    # as a precaution, in case there is timestamp as index, we should reset it 
+    # so we can delete it as a column in the next try block
+    try:
+        # drop the time column 
+        km_df.reset_index(drop=True, inplace=True) 
+    except:
+        pass
+    
+    # as a precaution, in case there is a timestamp column, we need to drop it
+    try:
+        # drop the time column 
+        km_df = km_df.drop(columns = ['time']) 
+    except:
+        pass
     
     # separate the data from the dataframe and convert to np array
     X = km_df.values
@@ -153,7 +240,7 @@ def clustering_function(km_df, number_of_clusters=3, init = "random", n_init=20)
 
 # # Train SVC
 
-# In[7]:
+# In[8]:
 
 
 def train_svc(svm_df):
@@ -194,7 +281,7 @@ def train_svc(svm_df):
 
 # # Predict using the SVC model
 
-# In[8]:
+# In[9]:
 
 
 def predict_using_svc(cow, classifier_filepath="svm_for_cow.pkl"):
@@ -236,7 +323,7 @@ def predict_using_svc(cow, classifier_filepath="svm_for_cow.pkl"):
 
 # # Tabulate weights
 
-# In[9]:
+# In[10]:
 
 
 def calculate_weights(cow):
@@ -266,10 +353,10 @@ def calculate_weights(cow):
 
 # # Calculating Activity Level in 1 hour time slices
 
-# In[10]:
+# In[11]:
 
 
-def calculate_value_counts(cow):
+def calculate_activity_level(cow):
     # imports 
     import pandas as pd
     from datetime import date
@@ -374,7 +461,7 @@ def calculate_value_counts(cow):
 
 # # Calculate the Activity Index
 
-# In[11]:
+# In[12]:
 
 
 def calculate_activity_index(activity_df):
@@ -427,4 +514,6 @@ def calculate_activity_index(activity_df):
                                              'activity_level_24', 'activity_level_48',
                                              'activity_level_72', 'historical_comparison_value',
                                              'trend'])
+    
+    return activity_index_df
 
